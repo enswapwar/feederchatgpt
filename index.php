@@ -20,12 +20,6 @@ if ($raw === false) {
     exit;
 }
 
-$rss = @simplexml_load_string($raw);
-
-if (!$rss) {
-    echo "XML解析失敗（アクセスはできたが中身が読めない）\n";
-    exit;
-}
-
-echo "=== RSS取得成功 ===\n";
-print_r($rss);
+echo "=== RAW START ===\n";
+echo htmlspecialchars($raw);
+echo "\n=== RAW END ===\n";
