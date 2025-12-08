@@ -1,8 +1,0 @@
-# HTTPリクエスト
-requests
-
-# RSS解析
-feedparser
-
-# ChatGPT API
-openai
