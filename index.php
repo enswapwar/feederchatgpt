@@ -1,5 +1,7 @@
 <?php
 
+$url = "https://www1.x-feeder.info/lo18bx2n/rss.php";
+
 $context = stream_context_create([
     "http" => [
         "method" => "GET",
@@ -7,12 +9,10 @@ $context = stream_context_create([
     ]
 ]);
 
-$url = "https://www1.x-feeder.info/lo18bx2n/rss.php";
-
-$rss = @simplexml_load_file($url, null, LIBXML_NOCDATA, "", true, $context);
+$rss = @simplexml_load_file($url, null, LIBXML_NOCDATA, "", $context);
 
 if (!$rss) {
-    echo "RSS読み込み失敗（UA偽装も無理）\n";
+    echo "RSS 読み込み失敗（UA偽装しても無理）\n";
     exit;
 }
 
