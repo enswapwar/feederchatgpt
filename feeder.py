@@ -1,19 +1,20 @@
-# feeder.py
-# Feeder → Render上で動く最小構成のPythonサーバ
-# HTTPサーバとして動かし、GET/POSTを受けるだけの原始的入口
-# ここに後でフィード書き換え処理やAPIを追加する
-
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-@app.route("/", methods=["GET"])
+# 動作確認用エンドポイント
+@app.route("/")
 def index():
-    # 単純に動作確認できるレスポンス
-    return jsonify({"status": "ok", "msg": "feeder.py alive"})
+    return "OK: feeder backend alive"
+
+# RSS を受け取るエンドポイント
+@app.route("/feed", methods=["POST"])
+def feed():
+    data = request.get_json()
+    if not data or "rss" not in data:
+        return jsonify({"error": "no rss"}), 400
+    # ここで RSS を見て解析して必要なら送信、今はダンプだけ
+    return jsonify({"status": "recv", "len": len(data["rss"])})
 
 if __name__ == "__main__":
-    # RenderはPORT環境変数を自動で渡すので使う
-    import os
-    port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
