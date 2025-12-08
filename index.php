@@ -1,13 +1,27 @@
 <?php
-$url="https://www1.x-feeder.info/lo18bx2n/rss.php";
+// JSON受け取り
+$raw = file_get_contents("php://input");
+$data = json_decode($raw, true);
 
-$ch=curl_init($url);
-curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
-curl_setopt($ch,CURLOPT_FOLLOWLOCATION,true);
-curl_setopt($ch,CURLOPT_HTTPHEADER,["User-Agent: Mozilla/5.0"]);
+if (!$data || !isset($data["rss"])) {
+    echo "RSSなし";
+    exit;
+}
 
-$raw=curl_exec($ch);
+$xml_raw = $data["rss"];
 
-file_put_contents("last_response.html",$raw ?: "EMPTY");
+// XMLパース
+$xml = simplexml_load_string($xml_raw);
+if (!$xml) {
+    echo "XML解析失敗";
+    exit;
+}
 
-echo "dumped";
+// 最新アイテムタイトルだけ返すテスト
+$items = $xml->channel->item;
+if (count($items) == 0) {
+    echo "itemなし";
+    exit;
+}
+
+echo "OK: " . (string)$items[0]->title;
