@@ -1,7 +1,6 @@
 services:
-  - type: web             # Web Service として起動
-    name: feeder-gpt      # 名前は任意
-    env: python           # Pythonランタイム
-    plan: free            # 無料枠
-    buildCommand: pip install -r requirements.txt   # ライブラリ
-    startCommand: python server.py                  # メイン
+  - type: web
+    name: feederchatgpt
+    env: docker
+    plan: free
+    dockerfilePath: Dockerfile
