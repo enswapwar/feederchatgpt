@@ -1,18 +1,26 @@
 <?php
-$url = "https://www1.x-feeder.info/lo18bx2n/rss.xml"; // 実際のRSS URLに合わせてな
+$url = "https://www1.x-feeder.info/lo18bx2n/rss.xml";
 
-$raw = file_get_contents($url);
-// </rss> でRSSが終わるのでそこまでを強制的に切り出す
+$ch = curl_init($url);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
+// ブラウザ偽装
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    ."Chrome/127.0.0.1 Safari/537.36"
+]);
+
+$raw = curl_exec($ch);
+
+if ($raw === false) die("403か通信エラー");
+
 $pos = strpos($raw, '</rss>');
-if ($pos !== false) {
-    $xml_clean = substr($raw, 0, $pos + 6); // '</rss>' の6文字まで
-} else {
-    die("RSS終端が見つからねぇ");
-}
+if ($pos === false) die("RSS終端がねぇ");
 
-$xml = simplexml_load_string($xml_clean);
-if (!$xml) die("XML解析死んだ");
+$xml_clean = substr($raw, 0, $pos + 6);
+$xml = simplexml_load_string($xml_clean) or die("XML parse死");
 
 foreach ($xml->channel->item as $item) {
-    echo (string)$item->title . "\n";
+    echo $item->title . "\n";
 }
