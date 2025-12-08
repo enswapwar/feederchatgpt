@@ -2,19 +2,26 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# 動作確認用エンドポイント
 @app.route("/")
 def index():
-    return "OK: feeder backend alive"
+    return "feeder backend alive"
 
-# RSS を受け取るエンドポイント
-@app.route("/feed", methods=["POST"])
-def feed():
+# -------------------------
+# RSSを受け取って解析するAPI
+# -------------------------
+@app.route("/process", methods=["POST"])
+def process():
     data = request.get_json()
+
     if not data or "rss" not in data:
         return jsonify({"error": "no rss"}), 400
-    # ここで RSS を見て解析して必要なら送信、今はダンプだけ
-    return jsonify({"status": "recv", "len": len(data["rss"])})
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    rss_raw = data["rss"]
+
+    # 今はデバッグ用にRSSをそのまま返す
+    # 後で解析ロジックを入れる
+    return jsonify({
+        "status": "ok",
+        "length": len(rss_raw),
+        "sample": rss_raw[:200]  # 先頭200文字だけ確認用
+    })
