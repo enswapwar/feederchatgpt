@@ -1,5 +1,5 @@
 <?php
-$url = "https://www1.x-feeder.info/lo18bx2n/rss.xml";
+$url = "https://www1.x-feeder.info/lo18bx2n/rss.php";
 
 $ch = curl_init($url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -7,20 +7,22 @@ curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
 
 // ブラウザ偽装
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    ."Chrome/127.0.0.1 Safari/537.36"
+    "User-Agent: Mozilla/5.0"
 ]);
 
 $raw = curl_exec($ch);
+if ($raw === false) die("取得死");
 
-if ($raw === false) die("403か通信エラー");
+// RSS 部分だけ抽出（正規表現）
+if (!preg_match('/(<rss[\s\S]*?<\/rss>)/', $raw, $m)) {
+    die("RSS終端がねぇ（正規もヒットしねぇ）");
+}
 
-$pos = strpos($raw, '</rss>');
-if ($pos === false) die("RSS終端がねぇ");
+$pure = $m[1];  // 正しいRSSだけがここに入る
 
-$xml_clean = substr($raw, 0, $pos + 6);
-$xml = simplexml_load_string($xml_clean) or die("XML parse死");
+$xml = simplexml_load_string($pure);
+if (!$xml) die("XML parse死");
 
 foreach ($xml->channel->item as $item) {
-    echo $item->title . "\n";
+    echo $item->title . "<br>";
 }
