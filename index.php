@@ -1,25 +1,18 @@
 <?php
+$url = "https://www1.x-feeder.info/lo18bx2n/rss.xml"; // 実際のRSS URLに合わせてな
 
-$url = "https://www1.x-feeder.info/lo18bx2n/rss.php";
-
-$context = stream_context_create([
-    "http" => [
-        "method" => "GET",
-        "header" => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n"
-    ],
-    "ssl" => [
-        "verify_peer" => false,
-        "verify_peer_name" => false
-    ]
-]);
-
-$raw = @file_get_contents($url, false, $context);
-
-if ($raw === false) {
-    echo "RSS取得失敗（UA偽装でも無理）\n";
-    exit;
+$raw = file_get_contents($url);
+// </rss> でRSSが終わるのでそこまでを強制的に切り出す
+$pos = strpos($raw, '</rss>');
+if ($pos !== false) {
+    $xml_clean = substr($raw, 0, $pos + 6); // '</rss>' の6文字まで
+} else {
+    die("RSS終端が見つからねぇ");
 }
 
-echo "=== RAW START ===\n";
-echo htmlspecialchars($raw);
-echo "\n=== RAW END ===\n";
+$xml = simplexml_load_string($xml_clean);
+if (!$xml) die("XML解析死んだ");
+
+foreach ($xml->channel->item as $item) {
+    echo (string)$item->title . "\n";
+}
