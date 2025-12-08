@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -8,9 +9,34 @@ CORS(app)
 def index():
     return "feeder backend alive"
 
-# -------------------------
-# RSSを受け取って解析するAPI
-# -------------------------
+# -----------------------------------------------------------
+# RSS文字列から <item> の title/pubdate を抽出する処理
+# -----------------------------------------------------------
+def parse_rss(rss_text):
+    # <item>...</item> を全部抜く（DOTALLで改行含めマッチ）
+    items = re.findall(r"<item>(.*?)</item>", rss_text, re.DOTALL)
+
+    if not items:
+        return None
+
+    latest = items[0]  # 一番上＝最新
+
+    # title
+    title_match = re.search(r"<title>(.*?)</title>", latest, re.DOTALL)
+    title = title_match.group(1).strip() if title_match else ""
+
+    # pubdate
+    date_match = re.search(r"<pubdate>(.*?)</pubdate>", latest, re.DOTALL)
+    pubdate = date_match.group(1).strip() if date_match else ""
+
+    return {
+        "title": title,
+        "pubdate": pubdate
+    }
+
+# -----------------------------------------------------------
+# RSS受信API
+# -----------------------------------------------------------
 @app.route("/process", methods=["POST"])
 def process():
     data = request.get_json()
@@ -20,10 +46,12 @@ def process():
 
     rss_raw = data["rss"]
 
-    # 今はデバッグ用にRSSをそのまま返す
-    # 後で解析ロジックを入れる
+    parsed = parse_rss(rss_raw)
+
+    if not parsed:
+        return jsonify({"error": "no items found"}), 400
+
     return jsonify({
         "status": "ok",
-        "length": len(rss_raw),
-        "sample": rss_raw[:200]  # 先頭200文字だけ確認用
+        "latest": parsed
     })
