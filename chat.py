@@ -1,87 +1,96 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import re
-import requests
-from prompt import SYSTEM_PROMPT
+import datetime
 
 app = Flask(__name__)
 CORS(app)
 
-last_title = None
-last_reply = None
+# 最後に返信した pubDate
+last_replied_time = None
+
+# 一時的に保持する返信
+pending_reply = None
+
 
 @app.route("/")
 def index():
-    return "feeder backend alive"
+    return "feederchatgpt alive"
 
-# --------------------
-# RSS受信（A用）
-# --------------------
+
+def parse_rss(rss_text):
+    items = re.findall(r"<item>(.*?)</item>", rss_text, re.DOTALL)
+    if not items:
+        return None
+
+    latest = items[0]
+
+    title_match = re.search(r"<title>(.*?)</title>", latest, re.DOTALL)
+    title = title_match.group(1).strip() if title_match else ""
+
+    date_match = re.search(r"<pubDate>(.*?)</pubDate>", latest, re.DOTALL)
+    pubdate_raw = date_match.group(1).strip() if date_match else ""
+
+    try:
+        pubdate = datetime.datetime.strptime(
+            pubdate_raw, "%a, %d %b %Y %H:%M:%S %z"
+        )
+    except Exception:
+        pubdate = None
+
+    return {
+        "title": title,
+        "pubdate": pubdate,
+        "pubdate_raw": pubdate_raw
+    }
+
+
+def fake_chatgpt_reply(text):
+    # 本来は OpenAI API を叩く
+    return f"ChatGPT応答: {text}"
+
+
 @app.route("/process_rss", methods=["POST"])
 def process_rss():
-    global last_title, last_reply
+    global last_replied_time, pending_reply
 
     data = request.get_json()
     if not data or "rss" not in data:
         return jsonify({"error": "no rss"}), 400
 
-    rss = data["rss"]
+    parsed = parse_rss(data["rss"])
+    if not parsed or not parsed["pubdate"]:
+        return jsonify({"error": "parse failed"}), 400
 
-    items = re.findall(r"<item>(.*?)</item>", rss, re.DOTALL)
-    if not items:
-        return jsonify({"error": "no item"}), 400
+    item_time = parsed["pubdate"]
 
-    latest = items[0]
-    title = re.search(r"<title>(.*?)</title>", latest, re.DOTALL)
-    if not title:
-        return jsonify({"error": "no title"}), 400
+    # すでに返信済み or 古い
+    if last_replied_time and item_time <= last_replied_time:
+        return jsonify({"status": "ignored"})
 
-    text = title.group(1)
+    # @chatgpt が含まれていないなら無視
+    if "@chatgpt" not in parsed["title"].lower():
+        return jsonify({"status": "no_mention"})
 
-    if text == last_title:
-        return jsonify({"status": "same"})
+    reply = fake_chatgpt_reply(parsed["title"])
 
-    last_title = text
+    pending_reply = reply
+    last_replied_time = item_time
 
-    # @chatgpt が含まれるときだけ反応
-    if "@chatgpt" in text.lower():
-        last_reply = ask_llm(text)
+    return jsonify({
+        "status": "reply",
+        "reply": reply
+    })
 
-    return jsonify({"status": "ok"})
 
-# --------------------
-# B用：返答取得
-# --------------------
 @app.route("/reply", methods=["GET"])
-def reply():
-    if not last_reply:
-        return jsonify({"reply": None})
+def get_reply():
+    global pending_reply
 
-    r = last_reply
-    last_reply = None
+    if not pending_reply:
+        return jsonify({})
+
+    r = pending_reply
+    pending_reply = None  # 取り出したら即消す
+
     return jsonify({"reply": r})
-
-
-# --------------------
-# ChatGPT API
-# --------------------
-def ask_llm(text):
-    headers = {
-        "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": text}
-        ]
-    }
-
-    r = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers=headers,
-        json=payload
-    )
-    return r.json()["choices"][0]["message"]["content"]
