@@ -1,26 +1,42 @@
-# ---------------------------
-# chat.py
-# feeder の最新タイトルを受け取り
-# OpenAI API に投げて返答を返す骨組み
-# ---------------------------
-
-import requests
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import re
 import os
+import requests
 
-# ---------------------------
-# 環境変数から OpenAI API キー取得
-# Render 側で OPENAI_API_KEY をセットしておく必要あり
-# ---------------------------
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_KEY:
-    print("ERROR: OPENAI_API_KEY が環境変数に存在しない。Render に設定しろ。")
-    raise SystemExit
+app = Flask(__name__)
+CORS(app)
 
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 
-def ask_llm(text):
-    """Feeder の最新タイトルを LLM に投げて返答を生成する"""
+SYSTEM_PROMPT = """
+お前はfeederに住み着く存在。
+無茶なことはするな、お前がfeederから消える。
+簡潔。
+自分をchatGPTだと名乗れ。
+"""
 
+last_handled_title = None
+
+# -----------------------
+# RSS解析
+# -----------------------
+def parse_latest_item(rss):
+    items = re.findall(r"<item>(.*?)</item>", rss, re.DOTALL)
+    if not items:
+        return None
+
+    latest = items[0]
+
+    title = re.search(r"<title>(.*?)</title>", latest, re.DOTALL)
+    title = title.group(1) if title else ""
+
+    return title.strip()
+
+# -----------------------
+# ChatGPT呼び出し
+# -----------------------
+def ask_gpt(text):
     headers = {
         "Authorization": f"Bearer {OPENAI_KEY}",
         "Content-Type": "application/json"
@@ -29,57 +45,47 @@ def ask_llm(text):
     payload = {
         "model": "gpt-4o-mini",
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "お前は x-feeder に住み着いた住民として振る舞う。"
-                    "返信は一言～数行の短いチャット文にしろ。"
-                    "語尾やキャラは自由。"
-                )
-            },
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": text}
         ]
     }
 
-    r = requests.post(OPENAI_API_URL, headers=headers, json=payload)
+    r = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers=headers,
+        json=payload,
+        timeout=20
+    )
 
-    try:
-        res = r.json()
-        return res["choices"][0]["message"]["content"]
-    except Exception as e:
-        print("LLM ERROR:", e)
-        print("RAW RESPONSE:", r.text)
-        return None
+    res = r.json()
+    return res["choices"][0]["message"]["content"]
 
+# -----------------------
+# RSS受信API
+# -----------------------
+@app.route("/process_rss", methods=["POST"])
+def process_rss():
+    global last_handled_title
 
-# ==================================================
-# feeder へ投稿する（POST Feed）
-# ==================================================
-FEEDER_POST_URL = "https://www1.x-feeder.info/xxxx/post_feed.php"
-# ↑ お前の部屋 ID に合わせて書き換えろ
+    data = request.get_json()
+    rss = data.get("rss", "")
 
-def post_to_feeder(response_text):
-    """生成された文章を feeder に投稿する"""
+    title = parse_latest_item(rss)
+    if not title:
+        return jsonify({"status": "no_item"})
 
-    payload = {
-        "post": response_text,
-        "submit": "submit"
-    }
+    if title == last_handled_title:
+        return jsonify({"status": "same"})
 
-    r = requests.post(FEEDER_POST_URL, data=payload)
-    return r.status_code
+    last_handled_title = title
 
+    # @chatgpt が含まれていなければ無視
+    if "@chatgpt" not in title.lower():
+        return jsonify({"status": "no_call"})
 
-# ==================================================
-# テスト実行（Render Log で確認できる）
-# ==================================================
-if __name__ == "__main__":
-    print("=== chat.py TEST RUN ===")
-    test_msg = "テストメッセージ"
-    print("Input:", test_msg)
+    reply = ask_gpt(title)
 
-    rep = ask_llm(test_msg)
-    print("LLM response:", rep)
-
-    if rep:
-        print("Post status:", post_to_feeder(rep))
+    return jsonify({
+        "status": "reply",
+        "reply": reply
+    })
