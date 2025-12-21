@@ -7,85 +7,69 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
-OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
-
-SYSTEM_PROMPT = """
-お前はfeederに住み着く存在。
-無茶なことはするな、お前がfeederから消える。
-簡潔。
-自分をchatGPTだと名乗れ。
-"""
-
-last_handled_title = None
+last_title = None
+last_reply = None
 
 # -----------------------
 # RSS解析
 # -----------------------
-def parse_latest_item(rss):
+def parse_latest(rss):
     items = re.findall(r"<item>(.*?)</item>", rss, re.DOTALL)
     if not items:
         return None
-
-    latest = items[0]
-
-    title = re.search(r"<title>(.*?)</title>", latest, re.DOTALL)
-    title = title.group(1) if title else ""
-
-    return title.strip()
+    m = re.search(r"<title>(.*?)</title>", items[0], re.DOTALL)
+    return m.group(1) if m else None
 
 # -----------------------
-# ChatGPT呼び出し
+# ChatGPT
 # -----------------------
-def ask_gpt(text):
-    headers = {
-        "Authorization": f"Bearer {OPENAI_KEY}",
-        "Content-Type": "application/json"
-    }
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 
-    payload = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": text}
-        ]
-    }
-
+def ask_llm(text):
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
-        headers=headers,
-        json=payload,
-        timeout=20
+        headers={
+            "Authorization": f"Bearer {OPENAI_KEY}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": "お前はfeederに住み着く存在。簡潔。"},
+                {"role": "user", "content": text}
+            ]
+        }
     )
-
-    res = r.json()
-    return res["choices"][0]["message"]["content"]
+    return r.json()["choices"][0]["message"]["content"]
 
 # -----------------------
-# RSS受信API
+# A: RSS受信
 # -----------------------
 @app.route("/process_rss", methods=["POST"])
 def process_rss():
-    global last_handled_title
+    global last_title, last_reply
 
     data = request.get_json()
     rss = data.get("rss", "")
+    title = parse_latest(rss)
+    if not title or title == last_title:
+        return jsonify({"status": "ignore"})
 
-    title = parse_latest_item(rss)
-    if not title:
-        return jsonify({"status": "no_item"})
+    last_title = title
 
-    if title == last_handled_title:
-        return jsonify({"status": "same"})
+    if "@chatgpt" in title.lower():
+        last_reply = ask_llm(title)
 
-    last_handled_title = title
+    return jsonify({"status": "ok"})
 
-    # @chatgpt が含まれていなければ無視
-    if "@chatgpt" not in title.lower():
-        return jsonify({"status": "no_call"})
-
-    reply = ask_gpt(title)
-
-    return jsonify({
-        "status": "reply",
-        "reply": reply
-    })
+# -----------------------
+# B: 返信取得
+# -----------------------
+@app.route("/reply", methods=["GET"])
+def reply():
+    global last_reply
+    if not last_reply:
+        return jsonify({"reply": None})
+    r = last_reply
+    last_reply = None
+    return jsonify({"reply": r})
